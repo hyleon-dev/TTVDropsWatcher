@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         TTV Drops Watcher - Random Top Channel Switcher
-// @namespace    https://github.com/local/ttv-drops-watcher
-// @version      0.1.1
+// @namespace    https://github.com/hyleon-dev/TTVDropsWatcher
+// @version      0.1.2
 // @description  Watch a random top-10 channel of the current Twitch category. Switch to a new one if the channel goes offline or changes game.
-// @author       you
+// @author       hyLeon
 // @match        https://www.twitch.tv/*
-// @grant        GM_xmlhttprequest
+// @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -67,7 +67,7 @@
 
   function gmRequest(opts) {
     return new Promise((resolve, reject) => {
-      GM_xmlhttprequest({
+      GM_xmlhttpRequest({
         ...opts,
         onload: resolve,
         onerror: () => reject(new Error('network error: ' + opts.url)),
