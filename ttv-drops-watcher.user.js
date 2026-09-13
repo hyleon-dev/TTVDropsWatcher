@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         TTV Drops Watcher - Random Top Channel Switcher
 // @namespace    https://github.com/hyleon-dev/TTVDropsWatcher
-// @version      0.1.3
-// @description  Watch a random top-10 channel of the current Twitch category. Switch to a new one if the channel goes offline or changes game.
+// @version      0.3.0
+// @description  Watch a random top-10 channel of the current Twitch category, or start from the channel you are already watching. Switch to a new one if the channel goes offline or changes game.
 // @author       hyLeon
 // @match        https://www.twitch.tv/*
+// @updateURL    https://raw.githubusercontent.com/hyleon-dev/TTVDropsWatcher/main/ttv-drops-watcher.user.js
+// @downloadURL  https://raw.githubusercontent.com/hyleon-dev/TTVDropsWatcher/main/ttv-drops-watcher.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -230,13 +232,19 @@
     #ttv-watcher-hud-stop:hover { background: #53535f; }
   `);
 
+  function buttonLabel() {
+    return isChannelPage() ? '🎲 Kategorie-Watcher starten' : '🎲 Random Top ' + CONFIG.topN;
+  }
+
   function injectButton() {
-    if (document.getElementById('ttv-watcher-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'ttv-watcher-btn';
-    btn.textContent = '🎲 Random Top ' + CONFIG.topN;
-    btn.addEventListener('click', onStartClick);
-    document.body.appendChild(btn);
+    let btn = document.getElementById('ttv-watcher-btn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'ttv-watcher-btn';
+      btn.addEventListener('click', onStartClick);
+      document.body.appendChild(btn);
+    }
+    btn.textContent = buttonLabel();
   }
 
   function removeButton() {
@@ -322,6 +330,13 @@
       return;
     }
 
+    if (isChannelPage()) {
+      return onStartFromChannelPage();
+    }
+    return onStartFromDirectoryPage();
+  }
+
+  async function onStartFromDirectoryPage() {
     const detected = detectCategoryName();
     const confirmed = window.prompt('Kategorie erkannt. Bei Bedarf korrigieren:', detected);
     if (!confirmed) return;
@@ -329,9 +344,8 @@
     const endTime = promptForEndTime();
     if (endTime === undefined) return; // user cancelled
 
-    injectButton(); // keep button, show a temporary status via title
-    const original = document.getElementById('ttv-watcher-btn');
-    if (original) original.textContent = 'Suche Kanaele ...';
+    const btn = document.getElementById('ttv-watcher-btn');
+    if (btn) btn.textContent = 'Suche Kanaele ...';
 
     try {
       const game = await findGame(confirmed);
@@ -358,8 +372,60 @@
       location.href = 'https://www.twitch.tv/' + pick.user_login;
     } catch (e) {
       alert('Fehler: ' + e.message);
-      if (original) original.textContent = '🎲 Random Top ' + CONFIG.topN;
+      if (btn) btn.textContent = buttonLabel();
     }
+  }
+
+  // Starts the watcher for the category of the channel you are already
+  // watching. No navigation needed, this channel becomes the first watched
+  // channel and switching only kicks in once it goes offline or the
+  // streamer changes game.
+  async function onStartFromChannelPage() {
+    const login = currentChannelLogin();
+    const btn = document.getElementById('ttv-watcher-btn');
+    if (btn) btn.textContent = 'Pruefe Kanal ...';
+
+    let stream;
+    try {
+      stream = await getStreamByLogin(login);
+    } catch (e) {
+      alert('Fehler: ' + e.message);
+      if (btn) btn.textContent = buttonLabel();
+      return;
+    }
+
+    if (!stream) {
+      alert('Dieser Kanal ist gerade nicht live.');
+      if (btn) btn.textContent = buttonLabel();
+      return;
+    }
+
+    const proceed = window.confirm(
+      'Erkannte Kategorie: "' + stream.game_name + '".\n'
+      + 'Watcher fuer diese Kategorie starten, ausgehend von diesem Kanal?'
+    );
+    if (!proceed) {
+      if (btn) btn.textContent = buttonLabel();
+      return;
+    }
+
+    const endTime = promptForEndTime();
+    if (endTime === undefined) {
+      if (btn) btn.textContent = buttonLabel();
+      return;
+    }
+
+    const state = {
+      active: true,
+      gameId: stream.game_id,
+      gameName: stream.game_name,
+      tried: [login],
+      currentChannel: login,
+      pool: null,
+      endTime: endTime,
+    };
+    saveState(state);
+    init(); // already on the right page, just switch this tab into "active" mode
   }
 
   function requireCreds() {
@@ -488,19 +554,21 @@
   })();
 
   function init() {
-    if (isDirectoryCategoryPage()) {
+    const state = loadState();
+    const isRunning = !!(state && state.active && !(state.endTime && Date.now() >= state.endTime));
+
+    if (!isRunning && (isDirectoryCategoryPage() || isChannelPage())) {
       injectButton();
     } else {
       removeButton();
     }
 
-    const state = loadState();
     if (state && state.active && state.endTime && Date.now() >= state.endTime) {
       saveState({ active: false });
       removeHud();
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       if (stopTimeout) { clearTimeout(stopTimeout); stopTimeout = null; }
-    } else if (state && state.active && isChannelPage()) {
+    } else if (isRunning && isChannelPage()) {
       state.currentChannel = currentChannelLogin();
       saveState(state);
       showHud(state);
