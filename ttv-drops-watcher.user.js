@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TTV Drops Watcher - Random Top Channel Switcher
 // @namespace    https://github.com/hyleon-dev/TTVDropsWatcher
-// @version      0.1.2
+// @version      0.1.3
 // @description  Watch a random top-10 channel of the current Twitch category. Switch to a new one if the channel goes offline or changes game.
 // @author       hyLeon
 // @match        https://www.twitch.tv/*
@@ -39,6 +39,7 @@
   ];
 
   let pollTimer = null;
+  let stopTimeout = null;
 
   // ---------------------------------------------------------------------
   // Storage helpers
@@ -203,7 +204,7 @@
     #ttv-watcher-btn:hover { background: #772ce8; }
     #ttv-watcher-hud {
       position: fixed;
-      right: 20px;
+      left: 20px;
       bottom: 20px;
       z-index: 9999;
       background: #18181b;
@@ -247,8 +248,11 @@
     removeHud();
     const hud = document.createElement('div');
     hud.id = 'ttv-watcher-hud';
+    const timeInfo = state.endTime
+      ? ' (bis ' + new Date(state.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' Uhr)'
+      : '';
     hud.innerHTML =
-      '<div id="ttv-watcher-hud-text">Watcher aktiv: ' + escapeHtml(state.gameName) + '</div>'
+      '<div id="ttv-watcher-hud-text">Watcher aktiv: ' + escapeHtml(state.gameName) + escapeHtml(timeInfo) + '</div>'
       + '<button id="ttv-watcher-hud-stop">Stop</button>';
     document.body.appendChild(hud);
     document.getElementById('ttv-watcher-hud-stop').addEventListener('click', stopWatcher);
@@ -277,7 +281,37 @@
   function stopWatcher() {
     saveState({ active: false });
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (stopTimeout) { clearTimeout(stopTimeout); stopTimeout = null; }
     removeHud();
+  }
+
+  // Reads a duration in hours from the user. Empty input or '0' means no
+  // limit. Returns an absolute end timestamp, or null for no limit. Returns
+  // undefined if the user cancelled the prompt (caller should abort).
+  function promptForEndTime() {
+    const input = window.prompt('Wie lange soll der Watcher laufen (Stunden)? Leer oder 0 = unbegrenzt:', '0');
+    if (input === null) return undefined;
+    const hours = parseFloat(input.trim().replace(',', '.'));
+    if (!Number.isFinite(hours) || hours <= 0) return null;
+    return Date.now() + hours * 3600000;
+  }
+
+  function scheduleStopTimeout(state) {
+    if (stopTimeout) { clearTimeout(stopTimeout); stopTimeout = null; }
+    if (!state.endTime) return;
+
+    const remaining = state.endTime - Date.now();
+    if (remaining <= 0) {
+      stopWatcher();
+      return;
+    }
+    stopTimeout = setTimeout(() => {
+      saveState({ active: false });
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      stopTimeout = null;
+      setHudStatus('Zeit abgelaufen. Watcher gestoppt.');
+      setTimeout(removeHud, 4000); // leave the message visible for a moment
+    }, remaining);
   }
 
   async function onStartClick() {
@@ -291,6 +325,9 @@
     const detected = detectCategoryName();
     const confirmed = window.prompt('Kategorie erkannt. Bei Bedarf korrigieren:', detected);
     if (!confirmed) return;
+
+    const endTime = promptForEndTime();
+    if (endTime === undefined) return; // user cancelled
 
     injectButton(); // keep button, show a temporary status via title
     const original = document.getElementById('ttv-watcher-btn');
@@ -315,6 +352,7 @@
         tried: [pick.user_login],
         currentChannel: pick.user_login,
         pool: null, // filled again once the channel page has loaded
+        endTime: endTime, // null means no limit
       };
       saveState(state);
       location.href = 'https://www.twitch.tv/' + pick.user_login;
@@ -457,15 +495,22 @@
     }
 
     const state = loadState();
-    if (state && state.active && isChannelPage()) {
+    if (state && state.active && state.endTime && Date.now() >= state.endTime) {
+      saveState({ active: false });
+      removeHud();
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (stopTimeout) { clearTimeout(stopTimeout); stopTimeout = null; }
+    } else if (state && state.active && isChannelPage()) {
       state.currentChannel = currentChannelLogin();
       saveState(state);
       showHud(state);
       startPolling(state);
       refreshPool(state);
+      scheduleStopTimeout(state);
     } else {
       removeHud();
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (stopTimeout) { clearTimeout(stopTimeout); stopTimeout = null; }
     }
   }
 

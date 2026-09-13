@@ -29,14 +29,18 @@ Reverse Engineering der Twitch-Webseite. Das braucht einmalig eigene API-Zugangs
 
 1. Zu einer Kategorie-Seite navigieren, z. B. `twitch.tv/directory/category/valorant`.
 2. Unten rechts erscheint der Button "🎲 Random Top 10". Klicken.
-3. Die erkannte Kategorie wird zur Bestätigung angezeigt (bei Bedarf korrigieren) und
-   das Script öffnet einen zufälligen Kanal aus den Top 10 dieser Kategorie.
-4. Unten rechts erscheint ein kleines Status-Fenster mit einem "Stop"-Button. Solange
-   das Fenster da ist, läuft die automatische Überwachung.
-5. Geht der Kanal offline oder wechselt die Kategorie, wählt das Script automatisch
+3. Die erkannte Kategorie wird zur Bestätigung angezeigt (bei Bedarf korrigieren).
+4. Danach wird nach einer Laufzeit in Stunden gefragt. Leer lassen oder `0` eingeben
+   heißt: kein Zeitlimit, läuft bis zum manuellen Stoppen.
+5. Das Script öffnet einen zufälligen Kanal aus den Top 10 dieser Kategorie.
+6. Unten rechts erscheint ein kleines Status-Fenster mit einem "Stop"-Button und,
+   falls ein Zeitlimit gesetzt wurde, der geplanten Endzeit. Solange das Fenster da
+   ist, läuft die automatische Überwachung.
+7. Geht der Kanal offline oder wechselt die Kategorie, wählt das Script automatisch
    einen neuen Kanal aus den aktuellen Top 10 (kein Kanal wird doppelt gewählt, bis
    alle zehn einmal dran waren).
-6. Zum Beenden auf "Stop" klicken, oder im Tampermonkey-Menü
+8. Ist die eingestellte Laufzeit abgelaufen, stoppt das Script sich selbst.
+9. Zum vorzeitigen Beenden auf "Stop" klicken, oder im Tampermonkey-Menü
    "TTV Watcher: Stoppen" wählen.
 
 ## Konfiguration
